@@ -144,8 +144,8 @@ The figure below presents all 36 experimental scenarios used in the full framewo
 
 ## 5. Resources
 
-- Video：https://youtu.be/48cGp702p5k
-- Paper：ArXiv link (to be added)
+- Video：The URL will be released later.
+- Paper：See the supplementary multimedia material.
 
 ---
 
