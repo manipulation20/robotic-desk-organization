@@ -76,7 +76,7 @@ $ roslaunch realsense2_camera rs_camera.launch align_depth:=true enable_pointclo
 $ rosrun ultralytics_ros yolo_ros_node1.py
 
 # Environment constraint detection (e.g., table edges)
-$ export PYTHONPATH="/home/dongyi/anaconda3/envs/yolo_ros/lib/python3.8/site-packages:$PYTHONPATH"
+$ export PYTHONPATH="/home/xxx/anaconda3/envs/yolo_ros/lib/python3.8/site-packages:$PYTHONPATH"
 $ rosrun ultralytics_ros desktop_detection_node.py
 
 ```
@@ -144,8 +144,8 @@ The figure below presents all 36 experimental scenarios used in the full framewo
 
 ## 5. Resources
 
-- Video：The URL will be released later.
-- Paper：See the supplementary multimedia material.
+- Video: See the supplementary multimedia material.
+- Paper: The URL will be released later.
 
 ---
 
