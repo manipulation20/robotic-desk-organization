@@ -31,7 +31,7 @@ from threading import Thread
 
 from object_vision_manager1 import ObjectVisionManager
 import robot_utils, geometry_utils
-import motion_primitives
+import manipulation_primitives
 
 from geometry_msgs.msg import Pose, Quaternion
 import tf.transformations
@@ -144,28 +144,37 @@ def manage_neighborhood(obj_class, pose):
         # 直接使用传入位姿的平移作为当前物体中心
         obj_center = pose.pose.position
         
-        # 判断该物体是否在书上
+        # 判断该物体是否在书上 / 纸上
         is_on_book = False
+        is_on_paper = False
         if obj_class not in ["paper", "book"]:
-            # 获取所有书本的角点信息
             book_corners_list = []
+            paper_corners_list = []
             for obj, pts in all_objects:
                 if obj.class_name == "book" and obj.is_polygon and len(pts) >= 4:
                     book_corners_list.append(pts)
-            
+                elif obj.class_name == "paper" and obj.is_polygon and len(pts) >= 4:
+                    paper_corners_list.append(pts)
+
             # 检查是否在书上
             for book_corners in book_corners_list:
                 if geometry_utils.is_ruler_on_book(book_corners, obj_center):
                     is_on_book = True
                     break
-        
-        # 定义需要排除的物体类别
+
+            # 检查是否在纸上
+            for paper_corners in paper_corners_list:
+                if geometry_utils.is_ruler_on_book(paper_corners, obj_center):
+                    is_on_paper = True
+                    break
+
+        # 定义需要排除的物体类别：在书上排除书，在纸上排除纸
+        exclude_classes = set()
         if is_on_book:
-            # 在书上时，排除纸张和书
-            exclude_classes = {"paper", "book"}
-        else:
-            # 不在书上时，只排除纸张
-            exclude_classes = {"paper"}
+            exclude_classes.add("book")
+        if is_on_paper:
+            exclude_classes.add("paper")
+        rospy.loginfo(f"邻近排除类别: {exclude_classes} (on_book={is_on_book}, on_paper={is_on_paper})")
         
         # 查找4cm圆形区域内的紧邻物体
         nearest_neighbor = None
@@ -213,19 +222,17 @@ def manage_neighborhood(obj_class, pose):
         if nearest_neighbor is not None:
             rospy.loginfo(f"检测到物体 {obj_class} 与 {nearest_neighbor.class_name} 紧邻，距离: {min_distance:.3f}m")
             
-            # 调用push_neighbor函数
-            success = motion_primitives.push_neighbor(
-                pose,  # 当前物体中心
+            # 调用push_neighbor函数：推动邻近物体远离当前物体
+            success = manipulation_primitives.push_neighbor(
+                pose,  # 当前物体位姿（定方向与夹爪姿态）
                 neighbor_center,  # 邻近物体中心
-                # pose.pose.orientation
-                # obj_info.rect_angle if hasattr(obj_info, 'rect_angle') else 0  # 当前物体姿态
             )
             
             if success:
-                rospy.loginfo(f"成功推动物体 {obj_class} 远离邻近物体")
+                rospy.loginfo(f"成功推动邻近物体 {nearest_neighbor.class_name} 远离 {obj_class}")
                 return True
             else:
-                rospy.logwarn(f"推动物体 {obj_class} 失败")
+                rospy.logwarn(f"推动邻近物体 {nearest_neighbor.class_name} 失败")
                 return False
         
         # 未找到紧邻物体
@@ -237,7 +244,11 @@ def manage_neighborhood(obj_class, pose):
         return False
 
 # EraserPrimitive ###################################################################################################  
-class EraserPrimitive:
+class EraserOperation:
+    # 抓取深度偏移 (m)：有纸/书基底时较浅，无基底时更深
+    GRASP_DEPTH_ON_BASE = 0.006
+    GRASP_DEPTH_NO_BASE = 0.011
+
     def __init__(self):
         """
         初始化橡皮擦操作原语
@@ -249,7 +260,7 @@ class EraserPrimitive:
 
         self.object_vision_manager = ObjectVisionManager()
 
-        self.motion_primitives = motion_primitives
+        self.motion_primitives = manipulation_primitives
         self.motion_primitives.init_gripper_publisher()
 
         # self.gripper_pub = gripper_pub
@@ -348,6 +359,26 @@ class EraserPrimitive:
         except Exception as e:
             rospy.logerr(f"获取lead_case数据时出错: {str(e)}")
             return False
+
+    def _is_on_base(self, position):
+        """判断目标是否落在纸或书（基底）上。"""
+        if position is None:
+            return False
+        try:
+            all_objects = self.object_vision_manager.get_all_objects_3d()
+            if not all_objects:
+                return False
+            for obj, pts in all_objects:
+                if obj.class_name not in ("paper", "book"):
+                    continue
+                if obj.is_polygon and len(pts) >= 4:
+                    if geometry_utils.is_ruler_on_book(pts, position):
+                        rospy.loginfo(f"检测到目标在基底上: {obj.class_name}")
+                        return True
+            return False
+        except Exception as e:
+            rospy.logwarn(f"判断目标基底时出错，默认无基底: {str(e)}")
+            return False
         
     # def _get_penHolder_data(self):
     #     """获取橡皮擦的视觉数据"""
@@ -410,10 +441,18 @@ class EraserPrimitive:
             rospy.loginfo("接近物体...")
             self.motion_primitives.attainObject(target_pose)
 
+            target_position = (
+                self.eraser_position if target_class == 'eraser' else self.lead_case_position
+            )
+            on_base = self._is_on_base(target_position)
+            grasp_depth = self.GRASP_DEPTH_ON_BASE if on_base else self.GRASP_DEPTH_NO_BASE
             adjusted_pose = deepcopy(target_pose)
-            adjusted_pose.pose.position.z = target_pose.pose.position.z + 0.011 # necessary 0.006 
+            adjusted_pose.pose.position.z = target_pose.pose.position.z + grasp_depth
 
-            rospy.loginfo("尝试抓取物体...")
+            rospy.loginfo(
+                f"尝试抓取物体... target={target_class}, on_base={on_base}, "
+                f"grasp_depth={grasp_depth:.3f}"
+            )
             self.motion_primitives.grasp(adjusted_pose)
 
             rospy.loginfo("抬起物体...")
@@ -432,7 +471,11 @@ class EraserPrimitive:
             return False
 
 # PenPrimitive ###################################################################################################  
-class PenPrimitive:
+class PenOperation:
+    # 抓取深度偏移 (m)：有纸/书基底时浅，无基底时更深
+    GRASP_DEPTH_ON_BASE = -0.003
+    GRASP_DEPTH_NO_BASE = 0.016
+
     def __init__(self):
         """
         初始化Pen操作原语
@@ -444,7 +487,7 @@ class PenPrimitive:
 
         self.object_vision_manager = ObjectVisionManager()
 
-        self.motion_primitives = motion_primitives
+        self.motion_primitives = manipulation_primitives
         self.motion_primitives.init_gripper_publisher()
 
         # self.gripper_pub = gripper_pub
@@ -493,6 +536,26 @@ class PenPrimitive:
         except Exception as e:
             rospy.logerr(f"获取pen数据时出错: {str(e)}")
             return False
+
+    def _is_on_base(self):
+        """判断笔是否落在纸或书（基底）上。"""
+        if self.pen_position is None:
+            return False
+        try:
+            all_objects = self.object_vision_manager.get_all_objects_3d()
+            if not all_objects:
+                return False
+            for obj, pts in all_objects:
+                if obj.class_name not in ("paper", "book"):
+                    continue
+                if obj.is_polygon and len(pts) >= 4:
+                    if geometry_utils.is_ruler_on_book(pts, self.pen_position):
+                        rospy.loginfo(f"检测到笔在基底上: {obj.class_name}")
+                        return True
+            return False
+        except Exception as e:
+            rospy.logwarn(f"判断笔基底时出错，默认无基底: {str(e)}")
+            return False
     
     def execute(self):
 
@@ -526,9 +589,13 @@ class PenPrimitive:
             rospy.loginfo("接近物体...")
             self.motion_primitives.attainObject(self.pen_pose)
 
+            on_base = self._is_on_base()
+            grasp_depth = self.GRASP_DEPTH_ON_BASE if on_base else self.GRASP_DEPTH_NO_BASE
             grasp_pose = deepcopy(self.pen_pose)
-            grasp_pose.pose.position.z = self.pen_pose.pose.position.z + 0.009 # 0.015ii
-            rospy.loginfo("尝试抓取物体...")
+            grasp_pose.pose.position.z = self.pen_pose.pose.position.z + grasp_depth
+            rospy.loginfo(
+                f"尝试抓取物体... on_base={on_base}, grasp_depth={grasp_depth:.3f}"
+            )
             self.motion_primitives.grasp(grasp_pose)
 
             rospy.loginfo("抬起物体...")
@@ -548,7 +615,7 @@ class PenPrimitive:
             return False
 
 # RulerPrimitive ###################################################################################################  
-class RulerPrimitive: # motion primitive does not been defined
+class RulerOperation: # motion primitive does not been defined
     def __init__(self):
         """
         初始化Ruler/Triangle操作原语
@@ -558,7 +625,7 @@ class RulerPrimitive: # motion primitive does not been defined
         """
         self.object_vision_manager = ObjectVisionManager()
 
-        self.motion_primitives = motion_primitives
+        self.motion_primitives = manipulation_primitives
         self.motion_primitives.init_gripper_publisher()
         
         # Ruler 属性
@@ -1078,8 +1145,259 @@ class RulerPrimitive: # motion primitive does not been defined
         
         return True
 
+# RulerPrimitiveDesktopEdge: 对比实验 —— 始终用视野上方桌面长边抓取 ##############################
+class RulerOperationDesktopEdge(RulerOperation):
+    """
+    对比实验原语：无论尺子在书上还是桌面，均推向相机视野中上方的桌面长边并在该边抓取。
+    若尺子在书上，推离书区后将推动深度按 BOOK_THICKNESS 增加（z += BOOK_THICKNESS）。
+    """
+    BOOK_THICKNESS = 0.012  # 书厚 (m)，手动设定
+    EXIT_OFFSET = 0.015    # 出书点沿推方向外扩 (m)
+
+    def get_push_pose(self, direction, on_book, target_class, target_position, target_yaw_angle, target_angle):
+        """始终相对桌面上方长边生成 push 位姿。direction 固定为 longEdge，忽略书边。"""
+        try:
+            if not target_position:
+                rospy.logerr(f"{target_class}位置未知，无法生成push位姿")
+                return None
+
+            upper_edge = geometry_utils.get_upper_long_edge(self.desktop_corners)
+            if upper_edge is None:
+                rospy.logerr("无法获取桌面上方长边")
+                return None
+
+            grasp_position_2d = geometry_utils.foot_on_edge(upper_edge, target_position)
+
+            target_center = np.array([target_position.x, target_position.y])
+            target_angle_rad = np.radians(target_angle)
+
+            if target_class == 'ruler':
+                target_width = self.ruler_width
+                target_height = self.ruler_height
+            else:
+                target_width = self.triangle_width
+                target_height = self.triangle_height
+
+            edge1, edge2, is_width_longer = geometry_utils.calculate_edge_centers(
+                center=target_center,
+                width=target_width,
+                height=target_height,
+                angle=target_angle_rad
+            )
+
+            edge_vector = edge2 - edge1
+            edge_direction = edge_vector / np.linalg.norm(edge_vector)
+            edge_length = np.linalg.norm(edge_vector)
+
+            dist1 = np.linalg.norm(edge1 - grasp_position_2d)
+            dist2 = np.linalg.norm(edge2 - grasp_position_2d)
+
+            if dist1 > dist2:
+                push_point_2d = edge1 - edge_direction * (edge_length * 0.1)
+            else:
+                push_point_2d = edge2 + edge_direction * (edge_length * 0.1)
+
+            push_position = Point(x=push_point_2d[0], y=push_point_2d[1], z=target_position.z)
+            push_pose0 = robot_utils.pose3d(push_position, target_yaw_angle - 90)
+            self.rotationOpen_direction = geometry_utils.rotationOpen_direction(
+                target_yaw_angle, push_point_2d, grasp_position_2d
+            )
+            push_pose = robot_utils.rotaionOpen(
+                push_pose0, 7.5 * math.pi / 180, self.rotationOpen_direction
+            )
+
+            pos = push_pose0.pose.position
+            rospy.loginfo(
+                f"[DesktopEdge] 生成{target_class}推位姿: 位置=({pos.x:.3f}, {pos.y:.3f}), "
+                f"yaw_angle={target_yaw_angle:.1f}°"
+            )
+            return push_pose0, push_pose
+
+        except Exception as e:
+            rospy.logerr(f"生成{target_class}推位姿时出错: {str(e)}")
+            import traceback
+            rospy.logerr(traceback.format_exc())
+            return None
+
+    def get_grasp_pose(self, direction, on_book, target_class, target_position, target_yaw_angle, target_angle):
+        """始终在桌面上方长边上生成抓取位姿；书上时 z 加上 BOOK_THICKNESS。"""
+        try:
+            upper_edge = geometry_utils.get_upper_long_edge(self.desktop_corners)
+            if upper_edge is None:
+                rospy.logerr("无法获取桌面上方长边")
+                return None
+
+            grasp_position_2d = geometry_utils.foot_on_edge(upper_edge, target_position)
+
+            grasp_position = Point()
+            grasp_position.x = grasp_position_2d[0]
+            grasp_position.y = grasp_position_2d[1]
+            if on_book:
+                grasp_position.z = target_position.z + self.BOOK_THICKNESS
+            else:
+                grasp_position.z = target_position.z
+
+            yaw_angle = target_yaw_angle + geometry_utils.calculate_min_rotation(
+                target_yaw_angle, self.desktop_yaw_angle
+            )
+            grasp_pose0 = robot_utils.pose3d(grasp_position, yaw_angle - 90)
+
+            rospy.loginfo(
+                f"[DesktopEdge] 生成{target_class}抓取位姿: "
+                f"位置=({grasp_position.x:.3f}, {grasp_position.y:.3f}, {grasp_position.z:.3f}), "
+                f"yaw_angle={yaw_angle:.1f}°, on_book={on_book}"
+            )
+            return grasp_pose0
+
+        except Exception as e:
+            rospy.logerr(f"计算{target_class}抓取位姿时出错: {str(e)}")
+            return None
+
+    def execute(self):
+        """对比实验执行：固定推向桌面上方长边；书上场景分段改深度。"""
+        has_ruler = self._get_ruler_data()
+        if not has_ruler:
+            has_triangle = self._get_triangle_data()
+            if not has_triangle:
+                rospy.logerr("无法获取尺子或三角形数据，操作终止")
+                return False
+
+        if has_ruler:
+            target_class = 'ruler'
+            target_position = self.ruler_position
+            target_yaw_angle = self.ruler_yaw_angle
+            target_angle = self.ruler_angle
+            rospy.loginfo("[DesktopEdge] 检测到尺子，将执行尺子操作")
+        else:
+            target_class = 'triangle'
+            target_position = self.triangle_position
+            target_yaw_angle = self.triangle_yaw_angle
+            target_angle = self.triangle_angle
+            rospy.loginfo("[DesktopEdge] 检测到三角形，将执行三角形操作")
+
+        self._get_book_data()
+        if not self._get_desktop_data():
+            rospy.logerr("无法获取desktop数据，操作终止")
+            return False
+
+        on_book = (
+            self.book_corners is not None
+            and len(self.book_corners) > 0
+            and geometry_utils.is_ruler_on_book(self.book_corners, target_position)
+        )
+        rospy.loginfo(f"[DesktopEdge] {target_class}是否在书本上: {on_book}")
+
+        # 实验原语：永远使用桌面上方长边
+        push_direction = "longEdge"
+
+        target_data = self.object_vision_manager.get_objects_by_class_3d(target_class)
+        if target_data:
+            temp_push_pose0, _ = self.get_push_pose(
+                push_direction, on_book, target_class, target_position, target_yaw_angle, target_angle
+            )
+            manage_neighborhood(target_class, temp_push_pose0)
+            rospy.sleep(0.3)
+
+            if target_class == 'ruler':
+                if not self._get_ruler_data():
+                    rospy.logerr("manage_neighborhood 后无法获取尺子数据，操作终止")
+                    return False
+                target_position = self.ruler_position
+                target_yaw_angle = self.ruler_yaw_angle
+                target_angle = self.ruler_angle
+            else:
+                if not self._get_triangle_data():
+                    rospy.logerr("manage_neighborhood 后无法获取三角形数据，操作终止")
+                    return False
+                target_position = self.triangle_position
+                target_yaw_angle = self.triangle_yaw_angle
+                target_angle = self.triangle_angle
+
+            self._get_book_data()
+            if not self._get_desktop_data():
+                rospy.logerr("manage_neighborhood 后无法获取desktop数据，操作终止")
+                return False
+
+            on_book = (
+                self.book_corners is not None
+                and len(self.book_corners) > 0
+                and geometry_utils.is_ruler_on_book(self.book_corners, target_position)
+            )
+
+        push_pose0, push_pose = self.get_push_pose(
+            push_direction, on_book, target_class, target_position, target_yaw_angle, target_angle
+        )
+        if not push_pose:
+            rospy.logerr("无法生成push位姿，操作终止")
+            return False
+        push_pose.pose.position.z += 0.0035
+
+        grasp_pose0 = self.get_grasp_pose(
+            push_direction, on_book, target_class, target_position, target_yaw_angle, target_angle
+        )
+        if not grasp_pose0:
+            rospy.logerr("无法生成抓取位姿，操作终止")
+            return False
+        grasp_pose0.pose.position.z += 0.010
+        grasp_pose = robot_utils.rotaionOpenGrasp1(
+            grasp_pose0, 10 * math.pi / 180, self.rotationOpen_direction
+        )
+
+        exit_pose = None
+        if on_book:
+            start_2d = (push_pose.pose.position.x, push_pose.pose.position.y)
+            end_2d = (grasp_pose0.pose.position.x, grasp_pose0.pose.position.y)
+            exit_2d = geometry_utils.intersect_push_path_with_book(
+                self.book_corners, start_2d, end_2d, outward_offset=self.EXIT_OFFSET
+            )
+            if exit_2d is None:
+                rospy.logwarn("[DesktopEdge] 出书点计算失败，退化为无分段桌面推路径")
+            else:
+                exit_position = Point(
+                    x=exit_2d[0],
+                    y=exit_2d[1],
+                    z=push_pose.pose.position.z,  # 书面高度；随后在运动层切到桌面高度
+                )
+                exit_pose = robot_utils.pose3d(
+                    exit_position,
+                    target_yaw_angle - 90,
+                )
+                # 与 push_pose 保持一致的 fingertip 倾角
+                exit_pose = robot_utils.rotaionOpen(
+                    exit_pose, 7.5 * math.pi / 180, self.rotationOpen_direction
+                )
+                rospy.loginfo(
+                    f"[DesktopEdge] 出书过渡点: ({exit_2d[0]:.3f}, {exit_2d[1]:.3f}), "
+                    f"BOOK_THICKNESS={self.BOOK_THICKNESS:.3f}"
+                )
+
+        rospy.loginfo("移动到桌子上方位置...")
+        robot_utils.go_visionHome()
+
+        rospy.loginfo("attainObject...")
+        self.motion_primitives.attainRuler(push_pose0)
+
+        rospy.loginfo(f"[DesktopEdge] 执行{target_class} push抓取操作...")
+        self.motion_primitives.push0_desktop_edge(
+            push_pose, grasp_pose0, grasp_pose, exit_pose,
+            depth_delta=self.BOOK_THICKNESS if exit_pose is not None else 0.0,
+            rotationOpen_direction=self.rotationOpen_direction,
+        )
+
+        rospy.loginfo(f"抬起{target_class}...")
+        self.motion_primitives.lift(0.25)
+
+        place_pose = robot_utils.setTargetRotation(grasp_pose0)
+        rospy.loginfo("place pbject...")
+        self.motion_primitives.place_to_penHolder(place_pose, 0.03)
+
+        rospy.loginfo("移动到安全位置...")
+        robot_utils.go_visionHome()
+
+        return True
+
 # paperPrimitive ###################################################################################################  
-class PaperPrimitive: # motion primitive has not been defined 
+class PaperOperation: # motion primitive has not been defined 
     def __init__(self):
         """
         初始化Paper操作原语
@@ -1088,7 +1406,7 @@ class PaperPrimitive: # motion primitive has not been defined
             motion_primitives: 运动原语对象
         """
         self.object_vision_manager = ObjectVisionManager()
-        self.motion_primitives = motion_primitives
+        self.motion_primitives = manipulation_primitives
         self.motion_primitives.init_gripper_publisher()
         
         # 纸张属性
@@ -1380,13 +1698,13 @@ class PaperPrimitive: # motion primitive has not been defined
 
 # BookPrimitive ###################################################################################################      
   
-class BookPrimitive: # # motion primitive does not been defined
+class BookOperation: # # motion primitive does not been defined
     def __init__(self):
         """
         初始化Book操作原语
         """
         self.object_vision_manager = ObjectVisionManager()
-        self.motion_primitives = motion_primitives  # 假设已定义
+        self.motion_primitives = manipulation_primitives  # 假设已定义
         self.motion_primitives.init_gripper_publisher()
         
         # 左侧书本属性
@@ -1396,7 +1714,7 @@ class BookPrimitive: # # motion primitive does not been defined
         self.left_book_angle = None
         self.left_book_avg_z = None
         self.left_book_thickness = 0.015 #0.0025 #0.0065 #0.009 #0.012 #0.025
-        self.left_book_pryAngle = math.asin(self.left_book_thickness/0.095) # width of the book is 95mm
+        self.left_book_pryAngle = math.asin(self.left_book_thickness/0.095) # width of the gripper is 95mm
         
         # 右侧书本属性
         self.right_book_center = None
@@ -1665,13 +1983,13 @@ class BookPrimitive: # # motion primitive does not been defined
             return False
 
 # ReorientDeformablePrimitive ###################################################################################################
-class ReorientDeformablePrimitive:
+class ReorientDeformableOperation:
     def __init__(self):
         """
         初始化可变形物体重新定向操作原语
         """
         self.object_vision_manager = ObjectVisionManager()
-        self.motion_primitives = motion_primitives
+        self.motion_primitives = manipulation_primitives
         self.motion_primitives.init_gripper_publisher()
         
     def execute(self, obj_data):

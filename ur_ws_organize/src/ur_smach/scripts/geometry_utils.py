@@ -414,6 +414,171 @@ def calculate_foot_of_perpendicular(book_corners, push_direction, ruler_position
         return foot_points[1]
 
 
+# RulerPrimitiveDesktopEdge ######################################################################################################
+
+def _sorted_rect_edges_2d(corners):
+    """
+    将四边形角点按极角排序并构建四条边。
+    返回: [(p1, p2, length), ...] ，p 为 (x, y)
+    """
+    corners_2d = [(p.x, p.y) for p in corners]
+    cx = sum(p[0] for p in corners_2d) / float(len(corners_2d))
+    cy = sum(p[1] for p in corners_2d) / float(len(corners_2d))
+
+    def angle_from_center(point):
+        return math.atan2(point[1] - cy, point[0] - cx)
+
+    sorted_corners = sorted(corners_2d, key=angle_from_center)
+    edges = []
+    n = len(sorted_corners)
+    for i in range(n):
+        p1 = sorted_corners[i]
+        p2 = sorted_corners[(i + 1) % n]
+        edge_length = math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
+        edges.append((p1, p2, edge_length))
+    return edges
+
+
+def get_upper_long_edge(desktop_corners):
+    """
+    获取桌面两条长边中、中点 y 更小的那条（相机视野上方长边）。
+
+    参数:
+        desktop_corners: 桌面角点列表（含 x,y 属性）
+    返回:
+        (p1, p2): 上方长边两端点的 (x, y) 元组；失败返回 None
+    """
+    if not desktop_corners or len(desktop_corners) < 4:
+        rospy.logerr("desktop角点不足，无法获取上方长边")
+        return None
+
+    edges = _sorted_rect_edges_2d(desktop_corners)
+    sorted_edges = sorted(edges, key=lambda e: e[2], reverse=True)
+    long_edges = [sorted_edges[0][:2], sorted_edges[1][:2]]
+
+    def midpoint(edge):
+        a, b = edge
+        return ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
+
+    edge0, edge1 = long_edges
+    mid0, mid1 = midpoint(edge0), midpoint(edge1)
+    upper_edge = edge0 if mid0[1] <= mid1[1] else edge1
+    mid = midpoint(upper_edge)
+    rospy.loginfo(
+        f"选择桌面上方长边: 中点=({mid[0]:.3f}, {mid[1]:.3f}), "
+        f"端点1=({upper_edge[0][0]:.3f}, {upper_edge[0][1]:.3f}), "
+        f"端点2=({upper_edge[1][0]:.3f}, {upper_edge[1][1]:.3f})"
+    )
+    return upper_edge
+
+
+def foot_on_edge(edge, point_2d):
+    """
+    计算点到指定边线段的垂足（限制在线段上）。
+
+    参数:
+        edge: ((x1, y1), (x2, y2))
+        point_2d: (x, y) 或含 x,y 属性的对象
+    返回:
+        (x, y) 垂足
+    """
+    A, B = edge
+    if hasattr(point_2d, 'x'):
+        P = (point_2d.x, point_2d.y)
+    else:
+        P = (point_2d[0], point_2d[1])
+
+    AB = (B[0] - A[0], B[1] - A[1])
+    AP = (P[0] - A[0], P[1] - A[1])
+    dot_AB_AB = AB[0] * AB[0] + AB[1] * AB[1]
+    if dot_AB_AB == 0:
+        return A
+
+    t = (AB[0] * AP[0] + AB[1] * AP[1]) / dot_AB_AB
+    t = max(0.0, min(1.0, t))
+    return (A[0] + t * AB[0], A[1] + t * AB[1])
+
+
+def _segment_intersection(p1, p2, p3, p4, eps=1e-9):
+    """
+    线段 p1-p2 与 p3-p4 求交。
+    返回 (t, point)：t 为在 p1->p2 上的参数 [0,1]；无交点返回 None。
+    """
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    x4, y4 = p4
+
+    den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if abs(den) < eps:
+        return None
+
+    t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den
+    u = ((x1 - x3) * (y1 - y2) - (y1 - y3) * (x1 - x2)) / den
+    if t < -eps or t > 1.0 + eps or u < -eps or u > 1.0 + eps:
+        return None
+
+    t = max(0.0, min(1.0, t))
+    return t, (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+
+
+def intersect_push_path_with_book(book_corners, start_2d, end_2d, outward_offset=0.005):
+    """
+    计算推路径线段与书边界的交点（出书点），并沿推方向外扩一小段。
+
+    参数:
+        book_corners: 书本角点
+        start_2d: 推路径起点 (x, y)
+        end_2d: 推路径终点 (x, y)
+        outward_offset: 出书后沿推方向外扩距离 (m)
+    返回:
+        (x, y) 出书安全点；失败返回 None
+    """
+    if not book_corners or len(book_corners) < 3:
+        rospy.logwarn("书本角点不足，无法计算推路径交点")
+        return None
+    if start_2d is None or end_2d is None:
+        return None
+
+    start = (float(start_2d[0]), float(start_2d[1]))
+    end = (float(end_2d[0]), float(end_2d[1]))
+    direction = (end[0] - start[0], end[1] - start[1])
+    path_len = math.sqrt(direction[0] ** 2 + direction[1] ** 2)
+    if path_len < 1e-9:
+        rospy.logwarn("推路径长度过短，无法计算交点")
+        return None
+
+    book_points = [(p.x, p.y) for p in book_corners]
+    poly_path = Path(book_points)
+    start_inside = bool(poly_path.contains_point(start, radius=-1e-10))
+
+    edges = _sorted_rect_edges_2d(book_corners)
+    intersections = []
+    for p1, p2, _ in edges:
+        hit = _segment_intersection(start, end, p1, p2)
+        if hit is not None:
+            intersections.append(hit)
+
+    if not intersections:
+        rospy.logwarn("推路径与书边界无交点，使用路径中点作为退化出书点")
+        exit_point = (0.5 * (start[0] + end[0]), 0.5 * (start[1] + end[1]))
+    else:
+        intersections.sort(key=lambda item: item[0])
+        # 起点在书内：取第一个交点（出书）；起点在书外：取最后一个交点（离开书区）
+        t, exit_point = intersections[0] if start_inside else intersections[-1]
+        rospy.loginfo(
+            f"推路径出书交点: t={t:.3f}, 位置=({exit_point[0]:.3f}, {exit_point[1]:.3f}), "
+            f"start_inside={start_inside}"
+        )
+
+    unit = (direction[0] / path_len, direction[1] / path_len)
+    safe_point = (
+        exit_point[0] + outward_offset * unit[0],
+        exit_point[1] + outward_offset * unit[1],
+    )
+    return safe_point
+
+
 # PaperPrimitive & BookPrimitive #################################################################################################
 # RulerPrimitive get_push_pose function
 

@@ -3,10 +3,13 @@
 import rospy
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped, Point
-from object_primitives import ReorientDeformablePrimitive,EraserPrimitive, PenPrimitive, RulerPrimitive, PaperPrimitive, BookPrimitive
+from object_operation import ReorientDeformableOperation,EraserOperation, PenOperation, RulerOperation, RulerOperationDesktopEdge, PaperOperation, BookOperation
 from object_vision_manager1 import ObjectVisionManager
 import geometry_utils
-# import motion_primitives  # 假设这是您的运动控制模块
+# import manipulation_primitives  # 假设这是您的运动控制模块
+
+# True: 对比实验原语（始终桌面上方长边抓取）；False: 原始 RulerPrimitive
+USE_RULER_DESKTOP_EDGE = True
 
 class TaskPlanner:
     def __init__(self):
@@ -14,12 +17,14 @@ class TaskPlanner:
         rospy.init_node('task_planner', anonymous=True)
         
         # # 创建橡皮擦操作原语
-        self.eraser_primitive = EraserPrimitive()
-        self.pen_primitive = PenPrimitive()
-        self.ruler_primitive = RulerPrimitive()
-        self.paper_primitive = PaperPrimitive()
-        self.book_primitive = BookPrimitive()
-        self.reorient_deformable = ReorientDeformablePrimitive()
+        self.eraser_primitive = EraserOperation()
+        self.pen_primitive = PenOperation()
+        self.ruler_primitive = (
+            RulerOperationDesktopEdge() if USE_RULER_DESKTOP_EDGE else RulerOperation()
+        )
+        self.paper_primitive = PaperOperation()
+        self.book_primitive = BookOperation()
+        self.reorient_deformable = ReorientDeformableOperation()
         
         # 视觉管理器
         self.vision = ObjectVisionManager()
@@ -28,7 +33,10 @@ class TaskPlanner:
         self.command_sub = rospy.Subscriber('/tidy_task_command', String, self.tidy_command_cb)
         self.result_pub = rospy.Publisher('/tidy_task_result', String, queue_size=10)
         
-        rospy.loginfo("TaskPlanner 初始化完成，等待命令...")
+        rospy.loginfo(
+            f"TaskPlanner 初始化完成，等待命令... "
+            f"(ruler={'DesktopEdge' if USE_RULER_DESKTOP_EDGE else 'baseline'})"
+        )
 
         # 定义物体类别集合
         self.small_objects = {"eraser", "lead_case", "pen"}

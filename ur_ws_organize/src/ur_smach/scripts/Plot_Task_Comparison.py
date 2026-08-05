@@ -33,35 +33,35 @@ def apply_plot_style() -> None:
 
 
 
-# # with ruler and without ruler
+# with ruler and without ruler
 
-# # 准备数据
-# data = {
-#     'Case': ['w ruler', 'w/o ruler'],
-#     'Success rate': [0.7778, 1.0000]
-# }
-# df = pd.DataFrame(data)
+# 准备数据
+data = {
+    'Case': ['w ruler', 'w/o ruler'],
+    'Success rate': [0.7778, 1.0000]
+}
+df = pd.DataFrame(data)
 
-# # 绘图 - 添加width参数缩小条形宽度
-# apply_plot_style()
-# plt.figure(figsize=(6, 6))
-# ax = sns.barplot(x='Case', y='Success rate', data=df, 
-#                  palette=['#1f77b4', '#ff7f0e'],
-#                  width=0.5)  # 添加width参数，默认0.8，这里设为0.5
+# 绘图 - 添加width参数缩小条形宽度
+apply_plot_style()
+plt.figure(figsize=(6, 6))
+ax = sns.barplot(x='Case', y='Success rate', data=df, 
+                 palette=['#1f77b4', '#ff7f0e'],
+                 width=0.5)  # 添加width参数，默认0.8，这里设为0.5
 
-# # 自动添加数值标签
-# for p in ax.patches:
-#     ax.annotate(f'{p.get_height():.4f}', 
-#                 (p.get_x() + p.get_width() / 2., p.get_height()), 
-#                 ha='center', va='bottom', fontsize=VALUE_LABEL_FONTSIZE, color='black',
-#                 fontweight='bold')
+# 自动添加数值标签
+for p in ax.patches:
+    ax.annotate(f'{p.get_height():.4f}', 
+                (p.get_x() + p.get_width() / 2., p.get_height()), 
+                ha='center', va='bottom', fontsize=VALUE_LABEL_FONTSIZE, color='black',
+                fontweight='bold')
 
-# # ax.set_title('Success Rate Comparison', fontsize=TITLE_FONTSIZE, pad=15)
-# ax.set_ylabel('Success Rate', fontsize=AXIS_LABEL_FONTSIZE)
-# ax.set_xlabel('Case', fontsize=AXIS_LABEL_FONTSIZE)
-# plt.xticks(fontsize=TICK_LABEL_FONTSIZE)
-# plt.tight_layout()
-# plt.show()
+# ax.set_title('Success Rate Comparison', fontsize=TITLE_FONTSIZE, pad=15)
+ax.set_ylabel('Success Rate', fontsize=AXIS_LABEL_FONTSIZE)
+ax.set_xlabel('Case', fontsize=AXIS_LABEL_FONTSIZE)
+plt.xticks(fontsize=TICK_LABEL_FONTSIZE)
+plt.tight_layout()
+plt.show()
 
 
 

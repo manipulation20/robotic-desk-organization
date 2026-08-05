@@ -328,8 +328,8 @@ def place_to_penHolder(pose, delta_z=0.000): # delta_z to decrease the place hei
     waypoints.append(start_pose)
             
     pose1 = Pose()
-    pose1.position.x =  0.75707 # tool0 in Rviz
-    pose1.position.y =  0.18258
+    pose1.position.x =  0.75187 # tool0 in Rviz
+    pose1.position.y =  0.18436
     pose1.position.z =  start_pose.position.z - 0.22 - delta_z #- 0.02 # + 0.05 for pen bias experimentsi
     pose1.orientation = robot_utils.transformCoor(pose).orientation   # pose.pose.orientation
 
@@ -458,6 +458,80 @@ def push0(push_pose, grasp_pose0, grasp_pose):
 
     rospy.loginfo("Close gripper")
     # gripper_control = "close %s"
+    gripper_pub.publish("close")
+    rospy.sleep(0.5)
+
+# push0_desktop_edge: for RulerPrimitiveDesktopEdge comparison experiment ############################
+
+def push0_desktop_edge(push_pose, grasp_pose0, grasp_pose, exit_pose=None, depth_delta=0.0, rotationOpen_direction=True):
+    """
+    桌面长边抓取实验用 push。
+    exit_pose 为 None：与 push0 类似的单段推路径。
+    exit_pose 非 None：书上分段推——先推到出书点(书面高度)，再 z += depth_delta 后继续推到抓取。
+    """
+    global gripper_pub
+
+    if gripper_pub is None:
+        init_gripper_publisher()
+
+    rospy.loginfo("control gripper (push0_desktop_edge)")
+    gripper_pub.publish("open")
+    rospy.sleep(1)
+    gripper_pub.publish("relax_open")
+    rospy.sleep(0.1)
+
+    arm = MoveGroupCommander('manipulator')
+    end_effector_link = arm.get_end_effector_link()
+    start_pose1 = arm.get_current_pose(end_effector_link).pose
+
+    if exit_pose is None:
+        waypoints1 = [start_pose1]
+        wpose1 = robot_utils.transform_end(robot_utils.transformCoor(push_pose))
+        waypoints1.append(wpose1)
+
+        # 转动取 grasp_pose0，倾角与 push_pose 一致（rotaionOpen 7.5°）
+        middle_pose = robot_utils.rotaionOpen(
+            grasp_pose0, 7.5 * math.pi / 180, rotationOpen_direction
+        )
+        wpose2 = robot_utils.transform_end(robot_utils.transformCoor(middle_pose))
+        waypoints1.append(wpose2)
+        robot_utils.straightPath(waypoints1)
+    else:
+        # 段1: 书面高度推到出书点
+        waypoints_book = [start_pose1]
+        wpose_push = robot_utils.transform_end(robot_utils.transformCoor(push_pose))
+        waypoints_book.append(wpose_push)
+        wpose_exit = robot_utils.transform_end(robot_utils.transformCoor(exit_pose))
+        waypoints_book.append(wpose_exit)
+        robot_utils.straightPath(waypoints_book)
+
+        # 段2: 同 xy，z += depth_delta，再推到抓取边
+        exit_desktop = deepcopy(exit_pose)
+        exit_desktop.pose.position.z = exit_pose.pose.position.z + depth_delta
+
+        waypoints_desk = []
+        wpose_exit_desk = robot_utils.transform_end(robot_utils.transformCoor(exit_desktop))
+        waypoints_desk.append(wpose_exit_desk)
+
+        middle_pose = deepcopy(exit_desktop)
+        middle_pose.pose.position.x = grasp_pose0.pose.position.x
+        middle_pose.pose.position.y = grasp_pose0.pose.position.y
+        middle_pose.pose.orientation = push_pose.pose.orientation
+        wpose_middle = robot_utils.transform_end(robot_utils.transformCoor(middle_pose))
+        waypoints_desk.append(wpose_middle)
+        robot_utils.straightPath(waypoints_desk)
+
+    waypoints2 = []
+    wpose3 = robot_utils.transform_end(robot_utils.transformCoor(grasp_pose0))
+    waypoints2.append(wpose3)
+    robot_utils.straightPath(waypoints2)
+
+    waypoints3 = []
+    wpose4 = robot_utils.transform_end(robot_utils.transformCoor(grasp_pose))
+    waypoints3.append(wpose4)
+    robot_utils.straightPath(waypoints3)
+
+    rospy.loginfo("Close gripper")
     gripper_pub.publish("close")
     rospy.sleep(0.5)
 
@@ -687,12 +761,11 @@ def push(pos, inside, outside):
 
 def push_neighbor (obj_pose, neighbor_center):
     """
-    推动物体本身以远离其邻近物体
+    推动邻近物体以远离当前物体
     
     参数:
-        obj_center: 当前物体中心点 (geometry_msgs/Point)
+        obj_pose: 当前物体位姿 (geometry_msgs/PoseStamped)，用于确定远离方向与夹爪姿态
         neighbor_center: 邻近物体中心点 (geometry_msgs/Point)
-        obj_orientation: pose.pose.orientation
     
     返回:
         bool: 是否成功执行推动操作
@@ -706,70 +779,65 @@ def push_neighbor (obj_pose, neighbor_center):
     # rospy.sleep(0.1)
 
     try:
+        obj_center = obj_pose.pose.position
 
-        # 创建起始位姿（当前物体中心）
-        start_pose = obj_pose
-        start_pose.pose.position.z += 0.006
-        # start_pose.header.frame_id = "camera_color_frame"
-        # start_pose.header.stamp = rospy.Time.now()
-        # start_pose.pose.position.x = obj_center.x
-        # start_pose.pose.position.y = obj_center.y
-        # start_pose.pose.position.z = obj_center.z
-        # start_pose.pose.orientation = push_pose.pose.orientation
-        obj_center = start_pose.pose.position
+        rospy.loginfo(
+            f"开始执行push_neighbor操作: 当前物体中心({obj_center.x:.3f}, {obj_center.y:.3f}), "
+            f"邻近物体中心({neighbor_center.x:.3f}, {neighbor_center.y:.3f})"
+        )
 
-        rospy.loginfo(f"开始执行push_neighbor操作: 物体中心({obj_center.x:.3f}, {obj_center.y:.3f}), 邻近物体中心({neighbor_center.x:.3f}, {neighbor_center.y:.3f})")
-        
-        # 计算推动方向（从邻近物体指向当前物体的方向）
-        push_direction_x = obj_center.x - neighbor_center.x
-        push_direction_y = obj_center.y - neighbor_center.y
-        
+        # 推动方向：从当前物体指向邻近物体，将邻近物体推开
+        push_direction_x = neighbor_center.x - obj_center.x
+        push_direction_y = neighbor_center.y - obj_center.y
+
         # 计算推动距离（5cm）
-        push_distance = 0.05
-        
+        push_distance = 0.100
+
         # 归一化方向向量
         direction_magnitude = math.sqrt(push_direction_x**2 + push_direction_y**2)
         if direction_magnitude == 0:
             rospy.logwarn("推动方向为零向量，无法执行推动操作")
             return False
-            
+
         normalized_direction_x = push_direction_x / direction_magnitude
         normalized_direction_y = push_direction_y / direction_magnitude
-        
-        # 计算推动后的目标位置
-        target_x = obj_center.x + normalized_direction_x * push_distance
-        target_y = obj_center.y + normalized_direction_y * push_distance
-        target_z = obj_center.z
-        
-        # 创建推动位姿
+
+        # 起始位姿：邻近物体中心，姿态复用当前物体姿态
+        start_pose = PoseStamped()
+        start_pose.header.frame_id = "camera_color_frame"
+        start_pose.header.stamp = rospy.Time.now()
+        start_pose.pose.position.x = neighbor_center.x
+        start_pose.pose.position.y = neighbor_center.y
+        start_pose.pose.position.z = neighbor_center.z + 0.015
+        start_pose.pose.orientation = obj_pose.pose.orientation
+
+        # 目标位置：邻近物体沿推动方向移动
         push_pose = PoseStamped()
         push_pose.header.frame_id = "camera_color_frame"
         push_pose.header.stamp = rospy.Time.now()
-        push_pose.pose.position.x = target_x
-        push_pose.pose.position.y = target_y
-        push_pose.pose.position.z = target_z
-        
-        # 设置推动姿态（保持物体的原始角度）
+        push_pose.pose.position.x = neighbor_center.x + normalized_direction_x * push_distance
+        push_pose.pose.position.y = neighbor_center.y + normalized_direction_y * push_distance
+        push_pose.pose.position.z = start_pose.pose.position.z
         push_pose.pose.orientation = start_pose.pose.orientation
-        
+
         rospy.loginfo(f"推动起始位置: ({start_pose.pose.position.x:.3f}, {start_pose.pose.position.y:.3f})")
         rospy.loginfo(f"推动目标位置: ({push_pose.pose.position.x:.3f}, {push_pose.pose.position.y:.3f})")
-        
+
         # 执行推动运动
         # 1. 移动到起始位置上方
         approach_pose = robot_utils.transform_end(robot_utils.transformCoor(deepcopy(start_pose)))
         approach_pose.position.z += 0.05  # 略高于物体表面
-        
+
         # 2. 移动到起始位置
         # robot_utils.goHome()
         # robot_utils.go_visionHome()
-        
+
         # 3. 执行推动运动
         waypoints = []
         waypoints.append(approach_pose)
         waypoints.append(robot_utils.transform_end(robot_utils.transformCoor(start_pose)))
         waypoints.append(robot_utils.transform_end(robot_utils.transformCoor(push_pose)))
-        
+
         # 使用直线路径执行推动
         robot_utils.straightPath(waypoints)
 
@@ -779,10 +847,10 @@ def push_neighbor (obj_pose, neighbor_center):
         # rospy.sleep(0.1)
 
         robot_utils.go_visionHome()
-        
+
         rospy.loginfo("push_neighbor操作完成")
         return True
-        
+
     except Exception as e:
         rospy.logerr(f"push_neighbor执行出错: {str(e)}")
         return False

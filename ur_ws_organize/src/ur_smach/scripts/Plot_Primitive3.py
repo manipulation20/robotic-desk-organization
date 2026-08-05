@@ -7,19 +7,33 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-# 统一字体配置（全局）
-FONT_SCALE = 0.5
-BASE_FONTSIZE = 24
-AXIS_LABEL_FONTSIZE = 27  # x/y 轴标签字体大小
-TICK_LABEL_FONTSIZE = 20  # x/y 轴刻度标签字体大小
-ANNOT_FONTSIZE = 20       # 单元格中数值字体大小
-CBAR_LABEL_FONTSIZE = 27  # 颜色条标签字体大小
-CBAR_TICK_FONTSIZE = 20   # 颜色条刻度字体大小
+# ----------------------------------------------------------------------
+# 全局字体配置
+# Linux 通常无 Times New Roman；Liberation Serif 与其度量兼容，期刊可用
+# ----------------------------------------------------------------------
+_preferred_fonts = [
+    'Times New Roman', 'Times', 'Liberation Serif', 'FreeSerif', 'DejaVu Serif'
+]
+_available = {f.name for f in plt.matplotlib.font_manager.fontManager.ttflist}
+FONT_NAME = next((f for f in _preferred_fonts if f in _available), 'DejaVu Serif')
+
+FONT_SCALE = 1
+BASE_FONTSIZE = 25
+AXIS_LABEL_FONTSIZE = 30  # x/y 轴标签字体大小
+TICK_LABEL_FONTSIZE = 23  # x/y 轴刻度标签字体大小
+ANNOT_FONTSIZE = 23       # 单元格中数值字体大小
+CBAR_LABEL_FONTSIZE = 30  # 颜色条标签字体大小
+CBAR_TICK_FONTSIZE = 23   # 颜色条刻度字体大小
 
 sns.set_style("whitegrid")
 sns.set_context("talk", font_scale=FONT_SCALE)
+
+# 在 seaborn 设置后 **再次强制** 字体，覆盖可能被更改的设置
 plt.rcParams.update(
     {
+        'font.family': 'serif',
+        'font.serif': [FONT_NAME] + _preferred_fonts,
+        'mathtext.fontset': 'stix',
         "font.size": BASE_FONTSIZE,
         "axes.labelsize": AXIS_LABEL_FONTSIZE,
         "xtick.labelsize": TICK_LABEL_FONTSIZE,
@@ -55,7 +69,7 @@ ax = sns.heatmap(data,
 
 # 设置标题和轴名称
 # plt.title('Thickness and Angle Relationship Heatmap', fontsize=14, fontweight='bold')
-plt.xlabel('Test Angle', fontsize=AXIS_LABEL_FONTSIZE)
+plt.xlabel('Prying angle', fontsize=AXIS_LABEL_FONTSIZE)
 plt.ylabel('Thickness (mm)', fontsize=AXIS_LABEL_FONTSIZE)
 
 # 设置 x/y 轴刻度标签字体大小

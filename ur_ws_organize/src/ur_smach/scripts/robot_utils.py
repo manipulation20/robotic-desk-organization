@@ -677,9 +677,9 @@ def go_visionHome():
 
     # 设置路点数据，并加入路点列表
     wpose = deepcopy(start_pose)
-    wpose.position.x =  0.23682
-    wpose.position.y =  0.39791
-    wpose.position.z =  0.30000 # 0.45000
+    wpose.position.x =  0.37790 #0.23682
+    wpose.position.y =  0.49996 #0.39791
+    wpose.position.z =  0.40498 #0.38400 # 0.45000
     
     wpose.orientation.x = -0.599635
     wpose.orientation.y =  0.800275

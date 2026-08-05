@@ -210,7 +210,7 @@ if __name__ == '__main__':
     
     # 加载模型
     model_det = YOLO("/home/dongyi/Ultralytics_test/models/bestV2.pt")
-    model_seg = SAM("/home/dongyi/Ultralytics_test/models/sam2.1_b.pt")
+    model_seg = SAM("/home/dongyi/Ultralytics_test/models/sam2.1_l.pt") # sam2.1_b.pt sam2.1_l.pt太吃内存
     
     # 创建发布者
     object_info_pub = rospy.Publisher("/object_detection/info", ObjectInfoArray, queue_size=10)

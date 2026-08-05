@@ -3,8 +3,11 @@
 import rospy
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
-from object_primitives import EraserPrimitive, PenPrimitive, RulerPrimitive, PaperPrimitive, BookPrimitive
-# import motion_primitives  # 假设这是您的运动控制模块
+from object_operation import EraserPrimitive, PenPrimitive, RulerPrimitive, RulerPrimitiveDesktopEdge, PaperPrimitive, BookPrimitive
+# import manipulation_primitives  # 假设这是您的运动控制模块
+
+# True: 对比实验原语（始终桌面上方长边抓取）；False: 原始 RulerPrimitive
+USE_RULER_DESKTOP_EDGE = False
 
 class TaskPlanner:
     def __init__(self):
@@ -12,14 +15,16 @@ class TaskPlanner:
         rospy.init_node('task_planner', anonymous=True)
         
         # 初始化运动控制和夹爪控制
-        # self.motion_prim = motion_primitives
+        # self.motion_prim = manipulation_primitives
         # self.motion_prim.init_gripper_publisher() # rospy.Publisher('/gripper_control', String, queue_size=10) 
         # self.gripper_pub = rospy.Publisher('/gripper_control', String, queue_size=10)
         
         # # 创建橡皮擦操作原语
         self.eraser_primitive = EraserPrimitive()
         self.pen_primitive = PenPrimitive()
-        self.ruler_primitive = RulerPrimitive()
+        self.ruler_primitive = (
+            RulerPrimitiveDesktopEdge() if USE_RULER_DESKTOP_EDGE else RulerPrimitive()
+        )
         self.paper_primitive = PaperPrimitive()
         self.book_primitive = BookPrimitive()
         
@@ -27,7 +32,10 @@ class TaskPlanner:
         self.command_sub = rospy.Subscriber('/eraser_task_command', String, self.book_command_cb)
         self.result_pub = rospy.Publisher('/eraser_task_result', String, queue_size=10)
         
-        rospy.loginfo("TaskPlanner 初始化完成，等待命令...")
+        rospy.loginfo(
+            f"TaskPlanner 初始化完成，等待命令... "
+            f"(ruler={'DesktopEdge' if USE_RULER_DESKTOP_EDGE else 'baseline'})"
+        )
 
     def eraser_command_cb(self, msg):
         """橡皮擦任务命令的话题回调"""
