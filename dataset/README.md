@@ -1,164 +1,103 @@
-# robotic-desk-organization
+# Robotic Desk Organization Dataset
 
-## 1. Project Overview
-
-Robotic desk organization is a representative and challenging task for service robots operating in real-world environments. The main difficulties arise from the heterogeneous physical properties of desktop objects (e.g., small items, planar rigid objects, and deformable objects) and the variety of task objectives (e.g., sorting, storing, and stacking).
-
-In this project, we propose a constraint-aware multi-primitive framework for robotic desk organization, which exploits both environmental constraints (e.g., table surfaces and edges) and inter-object constraints (e.g., book edges) to enable robust manipulation of heterogeneous objects.
-
-We organize three primary manipulation primitives into a reusable library:
-
-- **Contact grasping**: suitable for small objects and paper;
-- **Push-grasping**: exploits table or book edges to grasp planar rigid objects such as rulers;
-- **Pry-grasping**: handles planar deformable objects such as books.
-
-Based on a perception pipeline (YOLO11, SAM2.1, geometric feature extraction, and point-cloud processing), together with the manipulation primitives and auxiliary primitives for placement, reorientation, and separation, we develop a spatial-dependency-aware task planner. The planner coordinates primitive execution according to object properties and support and adjacency relationships. The complete system performs object perception, manipulation, and orderly placement in structured desk-organization scenarios.
-
-The figure below illustrates an example of the initial and goal states of the organization task. For more details, please refer to the paper (link provided at the end).
-
-> ![Fig. 1: Initial and goal states of the desktop organization task](https://github.com/manipulation20/robotic-desk-organization/blob/main/Fig0.jpg)
-> *Fig. 1: Initial state (left) and organized state (right) of the desktop organization task.*  
-> *(The initial scene includes pens, erasers, lead cases, rulers, set squares, paper, books, etc. After organization, small items and rulers are placed in the pen holder, while paper and books are neatly stacked.)*
+This dataset is specifically constructed for object detection and desk organization tasks in desktop scenarios. It is designed to train visual recognition models (e.g., YOLO series) to support robots in detecting common stationery, books, and paper items, estimating their poses, and extracting keypoints for manipulation. The dataset covers both single‑object and multi‑object scenes, with rich variations in category combinations, occlusion levels, and backgrounds, ensuring strong robustness and generalization.
 
 ---
 
-## 2. Repository Structure
+## 1. Dataset Overview
 
-This repository is organized around two ROS workspaces and a dataset release page:
+The dataset targets the desk organization task and provides high‑quality annotated images for visual perception. It covers the **7 most common object categories** found on desktops:
 
-- **`ultralytics_ws/`** contains the perception-related ROS packages, including object detection, segmentation, geometric feature extraction, and scene perception.
-- **`ur_ws_organize/`** contains the robot-manipulation-related ROS packages, including robot, gripper, and camera communication, hand--eye calibration, manipulation primitives, and task planning.
-- **[Releases](https://github.com/manipulation20/robotic-desk-organization/releases)** provides the desktop-object dataset and its annotations for download.
+- **Book**
+- **Paper**
+- **Pen**
+- **Ruler**
+- **Triangle** (set square)
+- **Eraser**
+- **Lead case** (pencil case / lead container)
 
-The following subsections mainly describe the functions of the ROS packages used for perception, robot control, calibration, manipulation, and task planning.
-
-### **UR Robot (UR5e)**
-
-- **Universal_Robots_ROS_Driver**: Meta-package for controlling the UR robot.
-- **fmauch_universal_robot**: Meta-package containing the UR robot description.
-
-Tutorial: https://github.com/UniversalRobots/Universal_Robots_ROS_Driver
-
-### **Gripper (Rochu)**
-
-- **serial_msgs**: Communication package for controlling the gripper.
-
-### **Camera (Intel RealSense D415)**
-
-- **realsense-ros**: ROS package for Intel RealSense cameras.
-- **ddynamic_reconfigure**: Allows dynamic parameter tuning for camera nodes.
-
-Tutorial: http://neutron.manoonpong.com/perception-vision-realsense-set-up-tutorial/
-
-### **Eye-to-Hand Calibration**
-
-- **easy_handeye**: Automated, hardware-independent hand–eye calibration package.
-- **aruco_ros**: ROS wrapper for ArUco marker detection.
-- **vision_visp**: Provides visual servoing algorithms as ROS components.
-
-### **Perception**
-
-- **object_keypoint_msgs**: Message definitions for visual information of different object types.
-- **ultralytics_ros**: Includes object pose estimation, keypoint detection, and environment constraint perception (e.g., table edges).
-
-### **Task Planning**
-
-- **ur_smach**: A multi-primitive-based task planner for desktop organization.
+All images are annotated with bounding boxes, suitable for training YOLO11 and other object detectors. A YOLO11 model trained on this dataset achieved **mAP@50 = 0.995** and **mAP@50:95 = 0.951** on the test set, demonstrating the high quality and representativeness of the annotations.
 
 ---
 
-## 3. Usage
+## 2. Data Collection Rules
 
-This section describes the complete workflow for running the robotic desk-organization system, including perception, task planning, and manipulation execution. The required modules should be launched in the following order.
+To enhance model generalisation and real‑world adaptability, the dataset was collected following these rules:
 
-First, start the camera and run the perception modules:
-
-```bash
-$ cd ultralytics_ws/
-$ source devel/setup.bash
-
-# Launch the camera
-$ roslaunch realsense2_camera rs_camera.launch align_depth:=true enable_pointcloud:=true
-
-# Object pose and keypoint detection
-$ rosrun ultralytics_ros yolo_ros_node1.py
-
-# Environment constraint detection (e.g., table edges)
-$ export PYTHONPATH="/home/xxx/anaconda3/envs/yolo_ros/lib/python3.8/site-packages:$PYTHONPATH"
-$ rosrun ultralytics_ros desktop_detection_node.py
-
-```
-
-Then, start the gripper and robot communication interfaces, publish the hand–eye calibration results, and run the task planner:
-
-```bash
-$ cd ur_ws_organize/
-$ source devel/setup.bash
-
-# Gripper communication
-$ roslaunch serial_msgs gripper_control.launch 
-
-# Robot driver
-$ roslaunch ur_robot_driver ur5e_work_all.launch
-
-# Publish hand–eye calibration results
-$ roslaunch easy_handeye publish.launch
-
-# Task planner
-$ rosrun ur_smach TaskPlanner.py
-
-# Start the task
-$ rostopic pub /tidy_task_command std_msgs/String "start"
-
-```
+- **Scene types**: Both **single‑object** and **multi‑object** scenes are included.
+  - **Single‑object scenes**: Each image contains only one target object. Different shooting angles, distances, lighting conditions, external distractors (e.g., non‑target items), and backgrounds (plain desktop, textured desktop, etc.) are considered. Total: **2,820** images.
+  - **Multi‑object scenes**: Each image contains multiple objects, covering common category combinations (see Table 1), with varying degrees of overlap (independent, slight overlap, heavy overlap). Total: **7,397** images.
+- **Category combinations**: Based on co‑occurrence patterns in real desktop scenarios, 2‑ to 5‑category typical combinations were designed to ensure the model can handle complex arrangements.
+- **Imaging conditions**: Images were captured under various lighting (natural light, indoor lighting), heights, and viewing angles to simulate real robot viewpoints.
 
 ---
 
-## 4. Experimental Scenarios
+## 3. Dataset Composition
 
-To systematically evaluate the proposed framework, we designed **36 distinct experimental scenarios** under structured but representative desk-organization settings. These scenarios vary in the number of object categories, object combinations, layouts, and spatial relationships, including support, adjacency, overlap, and occlusion.
+The dataset comprises **10,217** images in total, divided into 6 subsets according to scene complexity and category combinations, as shown below:
 
-### Naming Convention
+| Subset ID | Category Combination Description | Number of Images |
+| :-------: | :-------------------------------- | :--------------: |
+| 1         | Single‑class scenes (each class individually) | 2,816 |
+| 2         | Two‑class combinations: paper+pen; book+pen | 1,219 |
+| 3         | Three‑class combinations: paper+pen+ruler; paper+pen+other stationery; book+pen+ruler; book+pen+other stationery; paper+book+pen | 3,513 |
+| 4         | Four‑class combinations: paper+pen+ruler+other; book+pen+ruler+other; paper+book+pen+ruler; paper+book+pen+other | 2,842 |
+| 5         | Five‑class combination: paper+book+pen+ruler+other | 761 |
+| 6         | Pure background (no target objects) | 217 |
 
-Each scenario is labeled as **`Cxyz`**, where:
+> **Note**: “Other stationery” includes erasers, lead cases, triangles, etc., i.e., categories other than paper, pen, book, and ruler.
 
-- **`x`** = number of object categories involved (range: 2–5)  
-- **`y`** = combination index within that category count  
-- **`z`** = layout instance index (1–3)  
-
-**Example:** `C311` denotes the first layout instance of the first combination involving three object categories.
-
-### Object Categories
-
-The following object groups are considered, consistent with Section III of the paper:
-
-| Category | Included Objects |
-|----------|------------------|
-| Small objects | Pens, erasers, lead cases |
-| Planar rigid objects | Straight rulers, 30° triangular rulers, 45° triangular rulers |
-| Planar deformable objects | Paper sheets (60–80 GSM), paperback books with relatively flexible covers |
-
-Each scenario contains **2 to 5 object categories** with varied object poses and layouts. The scenes include representative spatial relationships, such as small objects or rulers supported by other objects, adjacent objects that may interfere with manipulation, and partially or severely occluded objects. In particular, `C323` contains a pen partially covered by paper, whereas `C411` contains a ruler severely occluded by paper.
-
-### Full Set of 36 Scenarios
-
-The figure below presents all 36 scenarios used in the **Integrated Framework Evaluation**. Each subfigure shows the initial configuration of one desk-organization task, arranged from `C2xx` to `C5xx` according to the number of object categories. For each scenario, the robot is required to place small objects and rulers into a pen holder and stack paper and books according to the goal-state definition in Fig. 1.
-
-![36 experimental scenarios for desktop organization](https://github.com/manipulation20/robotic-desk-organization/blob/main/Fig1.png)
-
-*Fig. 2: The 36 experimental scenarios used to evaluate the integrated framework. Each scene is labeled as `Cxyz`, where `x` denotes the number of object categories, `y` the object-combination index, and `z` the layout instance. The scenarios include varied object combinations and representative support, adjacency, overlap, and occlusion relationships for evaluating the constraint-aware framework and spatial-dependency-aware task planner.*
+The subsets span from simple to complex scenes, offering abundant sample diversity for model training.
 
 ---
 
-## 5. Resources
+## 4. Annotation Tool and Format
 
-- Video: See the supplementary multimedia material.
-- Paper: The URL will be released later.
+- **Annotation tool**: [LabelImg](https://github.com/tzutalin/labelImg) for manual bounding‑box annotation.
+- **Original format**: Annotations are saved in **PASCAL VOC format** (XML files), one per image with the same name.
+- **Conversion for training**: Since YOLO models require a specific format, please use the provided conversion script to transform VOC XML files into **YOLO format** (one `.txt` file per image, each line containing `class_id x_center y_center width height`, all normalised). The conversion script is available in the project code repository.
 
 ---
 
-## 6. Contact
+## 5. Annotation Rules
 
-If you have any questions about this project, feel free to contact:
+To ensure annotation consistency and training effectiveness, annotators must follow these rules:
 
-📧 xxx (Double-anonymous peer review)
+- **Overlapping objects**: When two target objects overlap, annotate the full bounding box for each as long as the occluded area is **less than half of the object’s visible region**. If occlusion exceeds half, the object is not annotated.
+- **Image quality**: Do not annotate images that are blurry (object contours indiscernible), too dark, or over‑exposed (objects unrecognisable), or those that do not meet project‑specific criteria (e.g., non‑desktop scenes or objects outside the 7 classes).
+- **Small objects**: For small objects (e.g., lead cases, erasers), annotate them as long as human eyes can distinguish their approximate boundaries, regardless of algorithmic detectability.
+
+---
+
+## 6. Dataset Split and Performance Results
+
+The dataset was randomly split into **80% training, 10% validation, and 10% test** sets. A YOLO11 model trained on this dataset achieved the following performance on the test set:
+
+| Class      | Images | Instances | Box(P) | R    | mAP50 | mAP50-95 |
+|------------|--------|-----------|--------|------|-------|----------|
+| all        | 862    | 2930      | 0.999  | 0.999| 0.995 | 0.951    |
+| eraser     | 210    | 239       | 1.000  | 1.000| 0.995 | 0.893    |
+| pen        | 598    | 1267      | 0.997  | 0.994| 0.995 | 0.935    |
+| paper      | 380    | 397       | 1.000  | 1.000| 0.995 | 0.994    |
+| book       | 427    | 441       | 0.999  | 1.000| 0.995 | 0.995    |
+| ruler      | 142    | 162       | 0.998  | 1.000| 0.995 | 0.963    |
+| lead case  | 147    | 170       | 0.999  | 1.000| 0.995 | 0.924    |
+| triangle   | 218    | 254       | 0.999  | 1.000| 0.995 | 0.955    |
+
+> Speed per image: preprocessing 0.2ms, inference 2.0ms, post‑processing 0.6ms.
+
+The results show that the model achieves extremely high detection accuracy for all categories, with near‑perfect performance on books, paper, rulers, etc.
+
+---
+
+## 7. Dataset Download
+
+The dataset, along with supporting code and pre‑trained weights, is available on the project’s Releases page:
+
+**Download URL**: [https://github.com/manipulation20/robotic-desk-organization/releases](https://github.com/manipulation20/robotic-desk-organization/releases)
+
+After downloading and extracting the archive, please follow the instructions above for format conversion and dataset splitting. If you use this dataset in your research or project, please cite the associated paper (see the project homepage for details).
+
+---
+
+For any questions or suggestions, feel free to open an issue or contact us via the project repository. Enjoy using the dataset!
