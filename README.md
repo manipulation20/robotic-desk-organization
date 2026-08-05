@@ -2,29 +2,35 @@
 
 ## 1. Project Overview
 
-Desktop organization is a representative and challenging task for service robots operating in real-world environments. The main difficulties arise from the diversity of objects (e.g., small items, thin rigid objects, and deformable objects) and the variety of task objectives (e.g., sorting, storing, and stacking).
+Robotic desk organization is a representative and challenging task for service robots operating in real-world environments. The main difficulties arise from the heterogeneous physical properties of desktop objects (e.g., small items, planar rigid objects, and deformable objects) and the variety of task objectives (e.g., sorting, storing, and stacking).
 
-In this project, we propose a **task-oriented framework for robotic desktop organization**, which leverages environmental constraints (e.g., table edges, book edges) and inter-object interactions to enable robust manipulation of heterogeneous objects.
+In this project, we propose a constraint-aware multi-primitive framework for robotic desk organization, which exploits both environmental constraints (e.g., table surfaces and edges) and inter-object constraints (e.g., book edges) to enable robust manipulation of heterogeneous objects.
 
-We design three types of **environment-assisted manipulation primitives**:
+We organize three primary manipulation primitives into a reusable library:
 
-- **Contact grasping**: suitable for small objects and thin paper;
-- **Push grasping**: utilizes table or book edges to grasp planar rigid objects such as rulers;
-- **Pry grasping**: designed for planar deformable objects such as books.
+- **Contact grasping**: suitable for small objects and paper;
+- **Push-grasping**: exploits table or book edges to grasp planar rigid objects such as rulers;
+- **Pry-grasping**: handles planar deformable objects such as books.
 
-Based on a perception module (YOLO + SAM2.1 + point cloud processing), combined with the above manipulation primitives and auxiliary actions, we develop a task planner. The robotic system is capable of completing the full pipeline of desktop organization in real-world scenarios, including object detection, grasping, and orderly placement.
+Based on a perception pipeline (YOLO11, SAM2.1, geometric feature extraction, and point-cloud processing), together with the manipulation primitives and auxiliary primitives for placement, reorientation, and separation, we develop a spatial-dependency-aware task planner. The planner coordinates primitive execution according to object properties and support and adjacency relationships. The complete system performs object perception, manipulation, and orderly placement in structured desk-organization scenarios.
 
-The figure below illustrates an example of the initial and goal states of the organization task (corresponding to Fig. 1 in the paper). For more details, please refer to the paper (link provided at the end).
+The figure below illustrates an example of the initial and goal states of the organization task. For more details, please refer to the paper (link provided at the end).
 
 > ![Fig. 1: Initial and goal states of the desktop organization task](https://github.com/manipulation20/robotic-desk-organization/blob/main/Fig0.jpg)
 > *Fig. 1: Initial state (left) and organized state (right) of the desktop organization task.*  
-> *(The initial scene includes pens, erasers, lead cases, rulers, set squares, paper, books, etc. After organization, small items are placed in a pen holder, rulers are inserted into the holder, and paper and books are neatly stacked.)*
+> *(The initial scene includes pens, erasers, lead cases, rulers, set squares, paper, books, etc. After organization, small items and rulers are placed in the pen holder, while paper and books are neatly stacked.)*
 
 ---
 
 ## 2. Repository Structure
 
-This section introduces the main functional packages included in this project. It covers ROS communication packages for the robot, gripper, and camera, as well as hand–eye calibration, perception, and task planning modules specifically developed for this work.
+This repository is organized around two ROS workspaces and a dataset release page:
+
+- **`ultralytics_ws/`** contains the perception-related ROS packages, including object detection, segmentation, geometric feature extraction, and scene perception.
+- **`ur_ws_organize/`** contains the robot-manipulation-related ROS packages, including robot, gripper, and camera communication, hand--eye calibration, manipulation primitives, and task planning.
+- **[Releases](https://github.com/manipulation20/robotic-desk-organization/releases)** provides the desktop-object dataset and its annotations for download.
+
+The following subsections mainly describe the functions of the ROS packages used for perception, robot control, calibration, manipulation, and task planning.
 
 ### **UR Robot (UR5e)**
 
@@ -62,6 +68,8 @@ Tutorial: http://neutron.manoonpong.com/perception-vision-realsense-set-up-tutor
 ---
 
 ## 3. Usage
+
+This section describes the complete workflow for running the robotic desk-organization system, including perception, task planning, and manipulation execution. The required modules should be launched in the following order.
 
 First, start the camera and run the perception modules:
 
@@ -108,7 +116,7 @@ $ rostopic pub /tidy_task_command std_msgs/String "start"
 
 ## 4. Experimental Scenarios
 
-To systematically evaluate the proposed framework under realistic desktop organization conditions, we designed **36 distinct experimental scenarios**. These scenarios vary in the number of object categories, spatial arrangements, and inter-object relationships, covering representative clutter patterns commonly encountered in office and study environments.
+To systematically evaluate the proposed framework, we designed **36 distinct experimental scenarios** under structured but representative desk-organization settings. These scenarios vary in the number of object categories, object combinations, layouts, and spatial relationships, including support, adjacency, overlap, and occlusion.
 
 ### Naming Convention
 
@@ -122,23 +130,23 @@ Each scenario is labeled as **`Cxyz`**, where:
 
 ### Object Categories
 
-The following object types are considered, consistent with Section III of the paper:
+The following object groups are considered, consistent with Section III of the paper:
 
 | Category | Included Objects |
 |----------|------------------|
 | Small objects | Pens, erasers, lead cases |
-| Thin rigid objects | Straight rulers, 30° triangular rulers, 45° triangular rulers |
-| Planar deformable objects | Paper sheets (60–80 GSM), books (various thicknesses) |
+| Planar rigid objects | Straight rulers, 30° triangular rulers, 45° triangular rulers |
+| Planar deformable objects | Paper sheets (60–80 GSM), paperback books with relatively flexible covers |
 
-Each scenario includes **2 to 5 categories**, with objects initialized at arbitrary poses and occasional overlaps (e.g., rulers placed on paper or books).
+Each scenario contains **2 to 5 object categories** with varied object poses and layouts. The scenes include representative spatial relationships, such as small objects or rulers supported by other objects, adjacent objects that may interfere with manipulation, and partially or severely occluded objects. In particular, `C323` contains a pen partially covered by paper, whereas `C411` contains a ruler severely occluded by paper.
 
 ### Full Set of 36 Scenarios
 
-The figure below presents all 36 experimental scenarios used in the full framework evaluation (Section IV-E). Each subfigure illustrates the initial configuration of a desktop organization task. The scenarios are arranged in order of increasing complexity (from `C2xx` to `C5xx`). For each scenario, the robot is required to sort small items into a pen holder, arrange rulers neatly, and stack paper and books, following the same goal state definition as in Fig. 1.
+The figure below presents all 36 scenarios used in the **Integrated Framework Evaluation**. Each subfigure shows the initial configuration of one desk-organization task, arranged from `C2xx` to `C5xx` according to the number of object categories. For each scenario, the robot is required to place small objects and rulers into a pen holder and stack paper and books according to the goal-state definition in Fig. 1.
 
 ![36 experimental scenarios for desktop organization](https://github.com/manipulation20/robotic-desk-organization/blob/main/Fig1.png)
 
-*Fig. 2: All 36 experimental scenarios evaluated in Section IV-E. Each subfigure is labeled as `Cxyz`, where `x` denotes the number of object categories (2–5), `y` the combination index, and `z` the layout instance (1–3). The scenes include various combinations of pens, erasers, lead cases, rulers (straight and triangular), paper sheets, and books. Objects may be placed directly on the table, partially overlapping, or stacked on other objects (e.g., rulers on books). These scenarios capture typical desk clutter and are used to evaluate the success rate and robustness of the proposed multi-primitive task planner.*
+*Fig. 2: The 36 experimental scenarios used to evaluate the integrated framework. Each scene is labeled as `Cxyz`, where `x` denotes the number of object categories, `y` the object-combination index, and `z` the layout instance. The scenarios include varied object combinations and representative support, adjacency, overlap, and occlusion relationships for evaluating the constraint-aware framework and spatial-dependency-aware task planner.*
 
 ---
 
