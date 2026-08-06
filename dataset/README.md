@@ -12,9 +12,9 @@ The dataset is designed for desk organization tasks and provides high-quality an
 * **Paper**
 * **Pen**
 * **Straight ruler**
-* **Triangle ruler** (set square)
+* **Triangle ruler** 
 * **Eraser**
-* **Lead case** (pencil case / lead container)
+* **Lead case**
 * **Box**
 * **Pen holder**
 
