@@ -1,5 +1,3 @@
-已按你的四项要求进行小修，并保留原有结构、数据和性能表格。
-
 # Robotic Desk Organization Dataset
 
 This dataset was specifically constructed for object detection and desk organization tasks in desktop environments. It is designed for training visual recognition models, such as the YOLO series, to support robots in detecting common stationery items, books, and paper, estimating their poses, and extracting keypoints for manipulation. The dataset includes both single-object and multi-object scenes, with substantial variations in category combinations, mild occlusion, and backgrounds to enhance robustness and generalisation.
