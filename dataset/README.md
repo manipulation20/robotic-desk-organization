@@ -31,7 +31,7 @@ To enhance model generalisation and adaptability to real-world environments, the
 * **Scene types**: Both **single-object** and **multi-object** scenes are included.
 
   * **Single-object scenes**: Each image contains only one target object. Variations in shooting angle, distance, lighting conditions, external distractors (e.g., non-target items), and backgrounds (e.g., plain or textured desktops) are considered. Total: **2,820** images.
-  * **Multi-object scenes**: Each image contains multiple objects and covers common category combinations (see Table 1). The objects are primarily independently placed or mildly occluded, without severe occlusion. Total: **7,397** images.
+  * **Multi-object scenes**: Each image contains multiple objects and covers common category combinations (see Table 1). The objects are primarily independently placed or mildly occluded, without severe occlusion. Total: **8,333** images.
 * **Category combinations**: Based on object co-occurrence patterns in real desktop environments, typical combinations involving two to five categories were designed to ensure that the model can handle complex object arrangements.
 * **Imaging conditions**: Images were captured at different camera heights and viewing angles to simulate realistic robot viewpoints.
 
@@ -39,7 +39,7 @@ To enhance model generalisation and adaptability to real-world environments, the
 
 ## 3. Dataset Composition
 
-The dataset comprises **10,217** images in total and is divided into 6 subsets according to scene complexity and category combinations, as shown below:
+The dataset comprises **11,366** images in total and is divided into 6 subsets according to scene complexity and category combinations, as shown below:
 
 | Subset ID | Category Combination Description                                                                                                                                          | Number of Images |
 | :-------: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :--------------: |
@@ -60,13 +60,13 @@ The subsets range from simple to complex scenes, providing substantial sample di
 
 * **Annotation tool**: [LabelImg](https://github.com/tzutalin/labelImg) was used for manual bounding-box annotation.
 * **Original format**: Annotations are stored in **PASCAL VOC format** as XML files, with one annotation file corresponding to each image and sharing the same filename.
-* **Conversion for training**: Since YOLO models require a specific annotation format, please use the provided conversion script to convert the VOC XML files into **YOLO format**. Each image corresponds to one `.txt` file, with each line containing `class_id x_center y_center width height`, where all coordinates are normalised.
+* **Conversion for training**: Since YOLO models require a specific annotation format, please convert the VOC XML files into **YOLO format**. Each image corresponds to one `.txt` file, with each line containing `class_id x_center y_center width height`, where all coordinates are normalised.
 
 ---
 
 ## 5. Annotation Rules
 
-To ensure annotation consistency and effective model training, annotators should follow these rules:
+To ensure annotation consistency and effective model training, annotators follow these rules:
 
 * **Overlapping objects**: When two target objects overlap, annotate the full bounding box of each object as long as less than half of the object is occluded. If more than half of the object is occluded, it should not be annotated.
 * **Image quality**: Do not annotate images that are blurry, with indistinguishable object contours; too dark; overexposed; or otherwise unsuitable for object recognition. Images that do not meet the project-specific criteria, such as non-desktop scenes or scenes containing objects outside the 9 target classes, should also not be annotated.
