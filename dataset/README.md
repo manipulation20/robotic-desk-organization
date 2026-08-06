@@ -30,7 +30,7 @@ To enhance model generalisation and adaptability to real-world environments, the
 
 * **Scene types**: Both **single-object** and **multi-object** scenes are included.
 
-  * **Single-object scenes**: Each image contains only one target object. Variations in shooting angle, distance, lighting conditions, external distractors (e.g., non-target items), and backgrounds (e.g., plain or textured desktops) are considered. Total: **2,820** images.
+  * **Single-object scenes**: Each image contains only one target object. Variations in shooting angle, distance, lighting conditions, external distractors (e.g., non-target items), and backgrounds (e.g., plain or textured desktops) are considered. Total: **2,816** images.
   * **Multi-object scenes**: Each image contains multiple objects and covers common category combinations (see Table 1). The objects are primarily independently placed or mildly occluded, without severe occlusion. Total: **8,333** images.
 * **Category combinations**: Based on object co-occurrence patterns in real desktop environments, typical combinations involving two to five categories were designed to ensure that the model can handle complex object arrangements.
 * **Imaging conditions**: Images were captured at different camera heights and viewing angles to simulate realistic robot viewpoints.
