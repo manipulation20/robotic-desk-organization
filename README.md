@@ -152,8 +152,8 @@ The figure below presents all 36 scenarios used in the **Integrated Framework Ev
 
 ## 5. Resources
 
-- Video: See the supplementary multimedia material.
-- Paper: The URL will be released later.
+- Video: [https://youtu.be/27Akmfllqt4](https://youtu.be/27Akmfllqt4).
+- Paper: Robotic Desk Organization of Heterogeneous Objects via Environmental and Inter-Object Constraints.
 
 ---
 
@@ -161,4 +161,4 @@ The figure below presents all 36 scenarios used in the **Integrated Framework Ev
 
 If you have any questions about this project, feel free to contact:
 
-📧 xxx (Double-anonymous peer review)
+📧 dongyi@nuaa.edu.cn
